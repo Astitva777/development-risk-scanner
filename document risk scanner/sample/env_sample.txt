@@ -1,2 +1,0 @@
-DB_URL=postgres://prod-db:5432/app
-REDIS_URL=redis://cache:6379

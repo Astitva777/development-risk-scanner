@@ -1,7 +1,0 @@
-{
-  "/login": {
-    "method": "POST",
-    "request": ["username", "password"],
-    "response": ["session_id"]
-  }
-}
