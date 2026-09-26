@@ -1,3 +1,0 @@
-bcrypt==3.0.0
-auth-lib==2.1.0
-flask==2.3.0
