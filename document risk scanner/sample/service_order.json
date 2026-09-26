@@ -1,0 +1,5 @@
+{
+  "service": "order-service",
+  "currency": "USD",
+  "apiVersion": "v2"
+}
