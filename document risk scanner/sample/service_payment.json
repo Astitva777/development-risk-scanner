@@ -1,0 +1,5 @@
+{
+  "service": "payment-service",
+  "currency": "INR",
+  "apiVersion": "v2"
+}
