@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment Risk Scanner — Bob 2.0 Prototype</title>
+<style>
+  :root{
+    --bg:#0a0f1a;
+    --panel:#111a2b;
+    --panel-2:#0d1524;
+    --line:#22304a;
+    --text:#dde3ee;
+    --text-dim:#8996ad;
+    --accent:#4fb8ff;
+    --safe:#33d69f;
+    --warn:#f5a623;
+    --danger:#ff5c5c;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 15% 0%, rgba(79,184,255,0.08), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(51,214,159,0.06), transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.5;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 20px 80px;}
+
+  header.top{
+    display:flex;align-items:flex-start;justify-content:space-between;gap:24px;
+    padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:28px;flex-wrap:wrap;
+  }
+  .brand{display:flex;gap:14px;align-items:center;}
+  .brand-mark{
+    width:44px;height:44px;border-radius:10px;flex:none;
+    background:linear-gradient(135deg,var(--accent),var(--safe));
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-weight:700;color:#04101c;font-size:15px;
+  }
+  h1{font-size:19px;margin:0;letter-spacing:.2px;}
+  .sub{color:var(--text-dim);font-size:13px;margin-top:3px;}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;}
+  button{
+    font-family:var(--sans);font-size:13.5px;font-weight:600;
+    padding:10px 16px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--text);cursor:pointer;
+    transition:border-color .15s, transform .1s;
+  }
+  button:hover{border-color:var(--accent);}
+  button:active{transform:translateY(1px);}
+  button.primary{background:var(--accent);color:#04101c;border-color:var(--accent);}
+  button.primary:hover{opacity:.92;border-color:var(--accent);}
+  button.ghost{background:transparent;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+
+  .control-room{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:28px;
+  }
+  @media(max-width:880px){.control-room{grid-template-columns:repeat(2,1fr);}}
+  .agent-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px;position:relative;overflow:hidden;
+  }
+  .agent-card .light{
+    width:9px;height:9px;border-radius:50%;background:#3a475f;display:inline-block;margin-right:7px;
+    box-shadow:0 0 0 0 rgba(0,0,0,0);
+  }
+  .agent-card.running .light{background:var(--accent);box-shadow:0 0 10px var(--accent);animation:pulse 1s infinite;}
+  .agent-card.pass .light{background:var(--safe);box-shadow:0 0 8px var(--safe);}
+  .agent-card.fail .light{background:var(--danger);box-shadow:0 0 8px var(--danger);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .agent-card .name{font-size:12.5px;font-weight:700;}
+  .agent-card .status{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-top:8px;}
+  .agent-card .icon{font-size:18px;margin-bottom:8px;display:block;}
+
+  section.panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:20px;margin-bottom:18px;
+  }
+  section.panel h2{
+    font-size:14px;margin:0 0 4px;display:flex;align-items:center;gap:8px;
+  }
+  section.panel .desc{color:var(--text-dim);font-size:12.5px;margin-bottom:14px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+  label.field-label{display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:6px;font-weight:600;}
+  textarea, input[type=text]{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+    color:var(--text);font-family:var(--mono);font-size:12.5px;padding:10px;resize:vertical;
+  }
+  textarea{min-height:110px;}
+  textarea:focus, input:focus{outline:none;border-color:var(--accent);}
+
+  .verdict-bar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:18px 20px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2);
+    margin-bottom:18px;
+  }
+  .verdict-bar .label{font-size:12px;color:var(--text-dim);}
+  .verdict-bar .verdict{font-size:20px;font-weight:800;font-family:var(--mono);}
+  .verdict-bar.blocked .verdict{color:var(--danger);}
+  .verdict-bar.clear .verdict{color:var(--safe);}
+  .verdict-bar.idle .verdict{color:var(--text-dim);}
+
+  .report-item{
+    border-left:3px solid var(--line);padding:10px 14px;margin-bottom:10px;border-radius:0 8px 8px 0;
+    background:var(--panel-2);
+  }
+  .report-item.pass{border-color:var(--safe);}
+  .report-item.fail{border-color:var(--danger);}
+  .report-item .head{display:flex;justify-content:space-between;font-size:13px;font-weight:700;}
+  .report-item .tag{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:20px;}
+  .report-item.pass .tag{background:rgba(51,214,159,.15);color:var(--safe);}
+  .report-item.fail .tag{background:rgba(255,92,92,.15);color:var(--danger);}
+  .report-item .msg{font-size:12.5px;color:var(--text-dim);margin-top:6px;font-family:var(--mono);white-space:pre-wrap;}
+
+  table.compare{width:100%;border-collapse:collapse;font-size:12.5px;}
+  table.compare th, table.compare td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;}
+  table.compare th{color:var(--text-dim);font-weight:600;font-size:11.5px;}
+  table.compare td.time-old{color:var(--warn);font-family:var(--mono);}
+  table.compare td.time-new{color:var(--safe);font-family:var(--mono);}
+  .bar-track{background:var(--line);border-radius:4px;height:6px;overflow:hidden;margin-top:4px;}
+  .bar-fill{height:100%;border-radius:4px;}
+
+  footer{color:var(--text-dim);font-size:11.5px;text-align:center;margin-top:30px;}
+  code.k{font-family:var(--mono);background:var(--panel-2);padding:1px 5px;border-radius:4px;}
+
+  /* ---- v2 additions: orchestrator, evidence, remediation, approval ---- */
+  .orchestrator-card{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(79,184,255,.08), transparent);
+    border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px;
+  }
+  .orchestrator-card .who{display:flex;align-items:center;gap:12px;}
+  .orchestrator-card .badge{
+    width:38px;height:38px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;
+  }
+  .orchestrator-card .title{font-size:13.5px;font-weight:700;}
+  .orchestrator-card .state{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+  .iter-badge{
+    font-family:var(--mono);font-size:11px;color:var(--accent);border:1px solid var(--line);
+    padding:4px 10px;border-radius:20px;background:var(--panel-2);
+  }
+
+  .log-panel{max-height:190px;overflow-y:auto;font-family:var(--mono);font-size:11.5px;}
+  .log-row{display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line);}
+  .log-row:last-child{border-bottom:none;}
+  .log-row .t{color:var(--text-dim);flex:none;width:78px;}
+  .log-empty{color:var(--text-dim);font-size:12px;}
+
+  .field-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+  .file-btn{
+    font-family:var(--sans);font-size:11px;font-weight:600;color:var(--accent);
+    background:transparent;border:1px dashed var(--line);padding:4px 9px;border-radius:6px;cursor:pointer;
+  }
+  .file-btn:hover{border-color:var(--accent);}
+  .evidence-tag{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);}
+  .evidence-tag.has-file{color:var(--safe);}
+
+  .fix-box{
+    margin-top:8px;padding:9px 12px;border-radius:8px;background:rgba(79,184,255,.07);
+    border:1px solid var(--line);
+  }
+  .fix-box .fix-label{font-size:11px;color:var(--accent);font-weight:700;margin-bottom:4px;}
+  .fix-box .fix-text{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);white-space:pre-wrap;}
+  .apply-fix-btn{margin-top:8px;font-size:12px;padding:7px 12px;}
+
+  .approval-panel{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:18px 20px;margin-bottom:18px;}
+  .approval-panel.locked{opacity:.55;}
+  .approval-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+  .approval-row input[type=text]{max-width:240px;}
+  .approval-status{font-family:var(--mono);font-size:12.5px;padding:4px 10px;border-radius:20px;background:var(--panel-2);color:var(--text-dim);}
+  .approval-status.ready{color:var(--safe);background:rgba(51,214,159,.12);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark">B2</div>
+      <div>
+        <h1>Deployment Risk Scanner</h1>
+        <div class="sub">Prototype "Bob 2.0" Deployment Manager · 5 subagents · runs fully in your browser, no data leaves this page</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="ghost" id="loadDemoBtn" type="button">Load demo scenario</button>
+      <button class="ghost" id="clearBtn" type="button">Clear all</button>
+      <button class="primary" id="runBtn" type="button">▶ Run all checks</button>
+    </div>
+  </header>
+
+  <div class="orchestrator-card" id="orchestratorCard">
+    <div class="who">
+      <div class="badge">🧭</div>
+      <div>
+        <div class="title">Main Agent — Deployment Manager (orchestration layer)</div>
+        <div class="state" id="orchestratorState">Idle. Waiting to dispatch subagents.</div>
+      </div>
+    </div>
+    <div class="iter-badge" id="iterBadge">Scan iteration: 0</div>
+  </div>
+
+  <div class="control-room" id="controlRoom"></div>
+
+  <section class="panel">
+    <h2>🧾 Orchestration Log</h2>
+    <div class="desc">Real-time record of what the Main Agent dispatched, when each subagent finished, and what it decided — the evidence trail behind the verdict.</div>
+    <div class="log-panel" id="orchestrationLog"><div class="log-empty">No activity yet. Run a scan to populate this log.</div></div>
+  </section>
+
+  <div class="verdict-bar idle" id="verdictBar">
+    <div>
+      <div class="label">DEPLOYMENT VERDICT</div>
+      <div class="verdict" id="verdictText">NOT YET SCANNED</div>
+    </div>
+    <div>
+      <div class="label" id="verdictSub">Fill in the panels below (or load the demo) and press "Run all checks".</div>
+    </div>
+    <div>
+      <button class="ghost" id="downloadBtn" type="button" disabled>Download report (.txt)</button>
+    </div>
+  </div>
+
+  <!-- 1. Migration -->
+  <section class="panel">
+    <h2>🗄️ 1. Database Migration Safety Checker</h2>
+    <div class="desc">Reads a migration script and flags operations that could break existing data or queries (drops, unsafe renames, NOT NULL without a default).</div>
+    <div class="field-row">
+      <label class="field-label" style="margin:0;">Migration script (SQL)</label>
+      <label class="file-btn">📎 Upload file<input type="file" id="file-in-migration" data-target="in-migration" hidden></label>
+    </div>
+    <textarea id="in-migration" placeholder="-- paste your migration SQL here"></textarea>
+    <div class="evidence-tag" id="evidence-in-migration">Source: pasted text</div>
+  </section>
+
+  <!-- 2. API -->
+  <section class="panel">
+    <h2>🌐 2. API Breaking-Change Detector</h2>
+    <div class="desc">Compares an old and new API contract (simple JSON shape) and flags removed endpoints, removed response fields, or newly-required request fields.</div>
+    <div class="grid2">
+      <div>
+        <div class="field-row">
+          <label class="field-label" style="margin:0;">Old API contract (JSON)</label>
+          <label class="file-btn">📎 Upload<input type="file" id="file-in-api-old" data-target="in-api-old" hidden></label>
+        </div>
+        <textarea id="in-api-old" placeholder='{"/login": {"method":"POST","request":["username","password"],"response":["token"]}}'></textarea>
+        <div class="evidence-tag" id="evidence-in-api-old">Source: pasted text</div>
+      </div>
+      <div>
+        <div class="field-row">
+          <label class="field-label" style="margin:0;">New API contract (JSON)</label>
+          <label class="file-btn">📎 Upload<input type="file" id="file-in-api-new" data-target="in-api-new" hidden></label>
+        </div>
+        <textarea id="in-api-new" placeholder='{"/login": {"method":"POST","request":["username","password"],"response":["session_id"]}}'></textarea>
+        <div class="evidence-tag" id="evidence-in-api-new">Source: pasted text</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Dependencies -->
+  <section class="panel">
+    <h2>📦 3. Dependency Conflict Scanner</h2>
+    <div class="desc">Reads a dependency manifest (package.json style or requirements.txt style, one <code class="k">name==version</code> or <code class="k">"name":"version"</code> per line) and flags known-incompatible pairs and duplicate/conflicting pins.</div>
+    <div class="field-row">
+      <label class="field-label" style="margin:0;">Dependency file contents</label>
+      <label class="file-btn">📎 Upload file<input type="file" id="file-in-deps" data-target="in-deps" hidden></label>
+    </div>
+    <textarea id="in-deps" placeholder="bcrypt==3.0.0&#10;auth-lib==2.1.0"></textarea>
+    <div class="evidence-tag" id="evidence-in-deps">Source: pasted text</div>
+  </section>
+
+  <!-- 4. Env -->
+  <section class="panel">
+    <h2>⚙️ 4. Environment Configuration Validator</h2>
+    <div class="desc">Compares the deployment's <code class="k">.env</code> contents against the list of variables the service requires, and flags anything missing or empty.</div>
+    <div class="grid2">
+      <div>
+        <div class="field-row">
+          <label class="field-label" style="margin:0;">.env file contents</label>
+          <label class="file-btn">📎 Upload<input type="file" id="file-in-env" data-target="in-env" hidden></label>
+        </div>
+        <textarea id="in-env" placeholder="DB_URL=postgres://...&#10;JWT_SECRET="></textarea>
+        <div class="evidence-tag" id="evidence-in-env">Source: pasted text</div>
+      </div>
+      <div>
+        <label class="field-label">Required variables (comma-separated)</label>
+        <textarea id="in-env-required" placeholder="DB_URL, JWT_SECRET, REDIS_URL"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Cross-service -->
+  <section class="panel">
+    <h2>🔗 5. Cross-Service Contract Checker</h2>
+    <div class="desc">Reads two (or more) service config files as JSON and flags shared keys whose values disagree — e.g. one service configured for INR, another for USD.</div>
+    <div class="grid2">
+      <div>
+        <div class="field-row">
+          <label class="field-label" style="margin:0;">Service A config (JSON, first line = service name)</label>
+          <label class="file-btn">📎 Upload<input type="file" id="file-in-svc-a" data-target="in-svc-a" hidden></label>
+        </div>
+        <textarea id="in-svc-a" placeholder='{"service":"payment-service","currency":"INR","apiVersion":"v2"}'></textarea>
+        <div class="evidence-tag" id="evidence-in-svc-a">Source: pasted text</div>
+      </div>
+      <div>
+        <div class="field-row">
+          <label class="field-label" style="margin:0;">Service B config (JSON)</label>
+          <label class="file-btn">📎 Upload<input type="file" id="file-in-svc-b" data-target="in-svc-b" hidden></label>
+        </div>
+        <textarea id="in-svc-b" placeholder='{"service":"order-service","currency":"USD","apiVersion":"v2"}'></textarea>
+        <div class="evidence-tag" id="evidence-in-svc-b">Source: pasted text</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Report -->
+  <section class="panel">
+    <h2>📊 Final Deployment Risk Report</h2>
+    <div class="desc" id="reportEmpty">Nothing scanned yet.</div>
+    <div id="reportList"></div>
+  </section>
+
+  <!-- Approval workflow -->
+  <section class="approval-panel locked" id="approvalPanel">
+    <h2 style="font-size:14px;margin:0 0 4px;">✅ Risk → Fix → Re-scan → Approval</h2>
+    <div class="desc" style="color:var(--text-dim);font-size:12.5px;margin-bottom:0;">
+      When a subagent fails, use its "Apply suggested fix &amp; re-scan" button in the report above.
+      Each fix automatically re-runs all 5 subagents. Once every subagent passes, this panel unlocks
+      so the release can be formally approved.
+    </div>
+    <div class="approval-row">
+      <span class="approval-status" id="approvalStatus">Not ready — issues outstanding</span>
+      <input type="text" id="approverName" placeholder="Approver name (optional)">
+      <button class="primary" id="approveBtn" type="button" disabled>Approve release</button>
+      <button class="ghost" id="certBtn" type="button" disabled>Download approval certificate (.txt)</button>
+    </div>
+  </section>
+
+  <!-- Time comparison -->
+  <section class="panel">
+    <h2>⏱ Manual vs. Bob 2.0 — time comparison</h2>
+    <div class="desc">Illustrative figures from the original brief, shown for context (not measured from your input).</div>
+    <table class="compare">
+      <thead><tr><th>Check</th><th>Manual</th><th>With subagents</th></tr></thead>
+      <tbody>
+        <tr><td>Migration review</td><td class="time-old">30 min</td><td class="time-new">Instant</td></tr>
+        <tr><td>API compatibility</td><td class="time-old">25 min</td><td class="time-new">Instant</td></tr>
+        <tr><td>Dependency conflicts</td><td class="time-old">20 min</td><td class="time-new">Instant</td></tr>
+        <tr><td>Env variables</td><td class="time-old">15 min</td><td class="time-new">Instant</td></tr>
+        <tr><td>Config mismatches</td><td class="time-old">30 min</td><td class="time-new">Instant</td></tr>
+        <tr><td><strong>Total</strong></td><td class="time-old"><strong>~2 hours</strong></td><td class="time-new"><strong>~15 min</strong></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer>Runs 100% client-side — refresh clears all data. See README.md in the zip for full documentation.</footer>
+</div>
+
+<script>
+const AGENTS = [
+  {id:'migration', icon:'🗄️', name:'Migration Safety'},
+  {id:'api', icon:'🌐', name:'API Breaking-Change'},
+  {id:'deps', icon:'📦', name:'Dependency Conflict'},
+  {id:'env', icon:'⚙️', name:'Env Validator'},
+  {id:'svc', icon:'🔗', name:'Cross-Service Contract'},
+];
+
+const controlRoom = document.getElementById('controlRoom');
+AGENTS.forEach(a=>{
+  const el = document.createElement('div');
+  el.className = 'agent-card';
+  el.id = 'card-'+a.id;
+  el.innerHTML = `<span class="icon">${a.icon}</span><div class="name"><span class="light"></span>${a.name}</div><div class="status" id="status-${a.id}">Idle</div>`;
+  controlRoom.appendChild(el);
+});
+
+function setAgentState(id, state, msg){
+  const card = document.getElementById('card-'+id);
+  card.classList.remove('running','pass','fail');
+  if(state) card.classList.add(state);
+  document.getElementById('status-'+id).textContent = msg;
+}
+
+function val(id){ return document.getElementById(id).value; }
+function setVal(id, v){ document.getElementById(id).value = v; }
+
+// ---------- v2: evidence sourcing (upload real project files) ----------
+
+const evidenceSource = {}; // textarea id -> filename or "pasted text"
+const FILE_TARGETS = ['in-migration','in-api-old','in-api-new','in-deps','in-env','in-svc-a','in-svc-b'];
+
+FILE_TARGETS.forEach(targetId=>{
+  const fileInput = document.getElementById('file-'+targetId);
+  if(!fileInput) return;
+  fileInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      setVal(targetId, reader.result);
+      evidenceSource[targetId] = file.name;
+      const tag = document.getElementById('evidence-'+targetId);
+      tag.textContent = 'Source: ' + file.name + ' (uploaded)';
+      tag.classList.add('has-file');
+    };
+    reader.readAsText(file);
+  });
+});
+
+function evidenceLabel(targetId){ return evidenceSource[targetId] || 'pasted text'; }
+
+// ---------- v2: orchestration log + Main Agent state ----------
+
+const orchestrationLog = [];
+let scanIteration = 0;
+
+function logEvent(msg){
+  orchestrationLog.push({ time: new Date().toLocaleTimeString(), msg });
+  const panel = document.getElementById('orchestrationLog');
+  panel.innerHTML = orchestrationLog.slice().reverse().map(e=>
+    `<div class="log-row"><span class="t">${e.time}</span><span>${e.msg}</span></div>`
+  ).join('');
+}
+
+function setOrchestratorState(text){
+  document.getElementById('orchestratorState').textContent = text;
+}
+
+function updateIterBadge(){
+  document.getElementById('iterBadge').textContent = 'Scan iteration: ' + scanIteration;
+}
+
+// ---------- Subagent logic ----------
+
+function checkMigration(sql){
+  const findings = [];
+  const lines = sql.split('\n');
+  lines.forEach((line, i)=>{
+    const l = line.trim();
+    const ln = i+1;
+    let m;
+    if(m = l.match(/drop\s+column\s+([a-zA-Z0-9_]+)/i)){
+      findings.push(`Line ${ln}: DROP COLUMN ${m[1]} — breaks any code still reading this column. Unsafe unless confirmed unused.`);
+    }
+    if(m = l.match(/drop\s+table\s+([a-zA-Z0-9_]+)/i)){
+      findings.push(`Line ${ln}: DROP TABLE ${m[1]} — irreversible, breaks any dependent queries/foreign keys.`);
+    }
+    if(/rename\s+column/i.test(l)){
+      findings.push(`Line ${ln}: RENAME COLUMN — old code referencing the previous name will break until redeployed.`);
+    }
+    if(/add\s+column/i.test(l) && /not\s+null/i.test(l) && !/default/i.test(l)){
+      findings.push(`Line ${ln}: ADD COLUMN ... NOT NULL with no DEFAULT — will fail against existing rows.`);
+    }
+    if(/alter\s+column/i.test(l) && /not\s+null/i.test(l) && !/default/i.test(l)){
+      findings.push(`Line ${ln}: ALTER COLUMN ... NOT NULL with no DEFAULT — existing NULL rows will break the migration.`);
+    }
+  });
+  return findings;
+}
+
+function checkApi(oldJson, newJson){
+  const findings = [];
+  let oldSpec, newSpec;
+  try{ oldSpec = JSON.parse(oldJson || '{}'); }catch(e){ return ['Could not parse OLD API contract as JSON: '+e.message]; }
+  try{ newSpec = JSON.parse(newJson || '{}'); }catch(e){ return ['Could not parse NEW API contract as JSON: '+e.message]; }
+
+  Object.keys(oldSpec).forEach(endpoint=>{
+    if(!(endpoint in newSpec)){
+      findings.push(`Endpoint ${endpoint} was removed. Existing clients calling it will fail.`);
+      return;
+    }
+    const o = oldSpec[endpoint], n = newSpec[endpoint];
+    const oldResp = o.response || [];
+    const newResp = n.response || [];
+    oldResp.forEach(field=>{
+      if(!newResp.includes(field)){
+        findings.push(`Breaking change in ${endpoint}: response field "${field}" was removed. Clients expecting "${field}" will fail.`);
+      }
+    });
+    const oldReq = o.request || [];
+    const newReq = n.request || [];
+    newReq.forEach(field=>{
+      if(!oldReq.includes(field)){
+        findings.push(`Breaking change in ${endpoint}: request now expects new field "${field}" that old clients never sent.`);
+      }
+    });
+  });
+  return findings;
+}
+
+const KNOWN_CONFLICTS = [
+  {a:/bcrypt/i, aMax:'3.0', b:/auth-lib/i, note:'auth-lib v2.x only supports bcrypt v2.x, not v3.x'},
+];
+
+function parseDeps(text){
+  const deps = {};
+  text.split('\n').forEach(line=>{
+    line = line.trim().replace(/[",]/g,'');
+    let m = line.match(/^([a-zA-Z0-9_\-\.]+)\s*[:=]{1,2}\s*\^?~?([0-9][0-9a-zA-Z\.\-]*)/);
+    if(m) deps[m[1].toLowerCase()] = m[2];
+  });
+  return deps;
+}
+
+function checkDeps(text){
+  const findings = [];
+  const deps = parseDeps(text);
+  const names = Object.keys(deps);
+  if(names.includes('bcrypt') && names.includes('auth-lib')){
+    const bcryptVer = deps['bcrypt'];
+    if(bcryptVer && bcryptVer.split('.')[0] === '3'){
+      findings.push(`Dependency conflict: bcrypt v${bcryptVer} vs auth-lib v${deps['auth-lib']} — auth-lib v2.x only supports bcrypt v2.x.`);
+    }
+  }
+  // generic duplicate-with-different-version detector (two lines, same package, different version)
+  const seen = {};
+  text.split('\n').forEach(line=>{
+    let m = line.trim().replace(/[",]/g,'').match(/^([a-zA-Z0-9_\-\.]+)\s*[:=]{1,2}\s*\^?~?([0-9][0-9a-zA-Z\.\-]*)/);
+    if(!m) return;
+    const name = m[1].toLowerCase(), ver = m[2];
+    if(seen[name] && seen[name] !== ver){
+      findings.push(`Dependency conflict: "${name}" pinned to both v${seen[name]} and v${ver} in the same manifest.`);
+    }
+    seen[name] = ver;
+  });
+  return findings;
+}
+
+function checkEnv(envText, requiredText){
+  const findings = [];
+  const present = {};
+  envText.split('\n').forEach(line=>{
+    const m = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if(m) present[m[1]] = m[2];
+  });
+  const required = requiredText.split(',').map(s=>s.trim()).filter(Boolean);
+  required.forEach(key=>{
+    if(!(key in present)){
+      findings.push(`Missing environment variable: ${key}.`);
+    } else if(present[key] === ''){
+      findings.push(`Environment variable ${key} is present but empty.`);
+    }
+  });
+  return findings;
+}
+
+function checkServices(aText, bText){
+  const findings = [];
+  let a, b;
+  try{ a = JSON.parse(aText || '{}'); }catch(e){ return ['Could not parse Service A config as JSON: '+e.message]; }
+  try{ b = JSON.parse(bText || '{}'); }catch(e){ return ['Could not parse Service B config as JSON: '+e.message]; }
+  const nameA = a.service || 'service-a';
+  const nameB = b.service || 'service-b';
+  const sharedKeys = Object.keys(a).filter(k=>k!=='service' && k in b);
+  sharedKeys.forEach(k=>{
+    if(JSON.stringify(a[k]) !== JSON.stringify(b[k])){
+      findings.push(`Config mismatch on "${k}": ${nameA}=${JSON.stringify(a[k])} vs ${nameB}=${JSON.stringify(b[k])}.`);
+    }
+  });
+  return findings;
+}
+
+// ---------- Orchestration ----------
+
+function runAgent(id, delay, fn, label){
+  return new Promise(resolve=>{
+    setAgentState(id, 'running', 'Scanning…');
+    const started = performance.now();
+    setTimeout(()=>{
+      let findings = [];
+      try{ findings = fn(); }catch(e){ findings = ['Internal error: '+e.message]; }
+      const pass = findings.length === 0;
+      const ms = Math.round(performance.now() - started);
+      setAgentState(id, pass ? 'pass' : 'fail', pass ? 'No issues found' : `${findings.length} issue(s) found`);
+      logEvent(`${label} finished in ${ms}ms — <strong>${pass ? 'PASS' : 'FAIL ('+findings.length+' issue(s))'}</strong>`);
+      resolve({id, pass, findings});
+    }, delay);
+  });
+}
+
+// ---------- v2: suggested fixes + one-click remediation ----------
+
+function suggestFixMigration(){
+  const sql = val('in-migration');
+  const lines = sql.split('\n');
+  const notes = [];
+  const fixed = lines.map(line=>{
+    const l = line.trim();
+    if(/drop\s+column\s+([a-zA-Z0-9_]+)/i.test(l) && !l.startsWith('--')){
+      const m = l.match(/drop\s+column\s+([a-zA-Z0-9_]+)/i);
+      notes.push(`Removed the unsafe DROP COLUMN ${m[1]} — left a note to phase it out manually once no code reads it.`);
+      return `-- [auto-fix] removed unsafe statement; phase out ${m[1]} manually once confirmed unused, then drop it in a follow-up migration.`;
+    }
+    if(/drop\s+table\s+([a-zA-Z0-9_]+)/i.test(l) && !l.startsWith('--')){
+      const m = l.match(/drop\s+table\s+([a-zA-Z0-9_]+)/i);
+      notes.push(`Removed the unsafe DROP TABLE ${m[1]} — flagged for manual, phased removal instead.`);
+      return `-- [auto-fix] removed unsafe statement; phase out table ${m[1]} manually once confirmed unused.`;
+    }
+    if(/rename\s+column/i.test(l) && !l.startsWith('--')){
+      notes.push('Removed the unsafe RENAME COLUMN — safer pattern is add-new-column, backfill, then drop-old-column in a later release.');
+      return `-- [auto-fix] removed unsafe rename; use add-new-column + backfill + drop-old-column across two releases instead.`;
+    }
+    if(/(add|alter)\s+column/i.test(l) && /not\s+null/i.test(l) && !/default/i.test(l) && !l.startsWith('--')){
+      notes.push('Added a placeholder DEFAULT so existing rows do not fail the NOT NULL constraint.');
+      return line.replace(/;?\s*$/, " DEFAULT ''" + (line.trim().endsWith(';') ? ';' : ''));
+    }
+    return line;
+  });
+  return { text: fixed.join('\n'), notes };
+}
+
+function suggestFixApi(){
+  let oldSpec, newSpec;
+  try{ oldSpec = JSON.parse(val('in-api-old') || '{}'); newSpec = JSON.parse(val('in-api-new') || '{}'); }
+  catch(e){ return { text: val('in-api-new'), notes: ['Could not parse JSON — fix manually.'] }; }
+  const notes = [];
+  Object.keys(oldSpec).forEach(ep=>{
+    if(!newSpec[ep]) return;
+    const oldResp = oldSpec[ep].response || [];
+    const newResp = newSpec[ep].response || [];
+    const merged = Array.from(new Set([...newResp, ...oldResp]));
+    if(merged.length !== newResp.length){
+      notes.push(`Kept old response field(s) on ${ep} alongside the new one, so existing clients keep working.`);
+      newSpec[ep].response = merged;
+    }
+  });
+  return { text: JSON.stringify(newSpec, null, 2), notes };
+}
+
+function suggestFixDeps(){
+  let text = val('in-deps');
+  const notes = [];
+  const deps = parseDeps(text);
+  if(deps['bcrypt'] && deps['bcrypt'].split('.')[0] === '3' && deps['auth-lib']){
+    // auth-lib v2.x only supports bcrypt v2.x, so the compatible fix is to pin
+    // bcrypt back to the 2.x line rather than assume an untested auth-lib upgrade.
+    text = text.replace(/(bcrypt\s*[:=]{1,2}\s*"?\^?~?)[0-9][0-9a-zA-Z\.\-]*/i, '$12.4.0');
+    notes.push('Pinned bcrypt back to v2.4.0, the latest version auth-lib v2.x actually supports.');
+  }
+  // de-duplicate conflicting repeated pins, keep the last occurrence
+  const linesArr = text.split('\n');
+  const lastIndexByName = {};
+  linesArr.forEach((line,i)=>{
+    const m = line.trim().replace(/[",]/g,'').match(/^([a-zA-Z0-9_\-\.]+)\s*[:=]{1,2}/);
+    if(m) lastIndexByName[m[1].toLowerCase()] = i;
+  });
+  const seenNames = new Set();
+  const deduped = linesArr.filter((line,i)=>{
+    const m = line.trim().replace(/[",]/g,'').match(/^([a-zA-Z0-9_\-\.]+)\s*[:=]{1,2}/);
+    if(!m) return true;
+    const name = m[1].toLowerCase();
+    if(i !== lastIndexByName[name]){ notes.push(`Removed duplicate/older pin for "${name}".`); return false; }
+    return true;
+  });
+  return { text: deduped.join('\n'), notes };
+}
+
+function suggestFixEnv(){
+  let text = val('in-env');
+  const required = val('in-env-required').split(',').map(s=>s.trim()).filter(Boolean);
+  const present = {};
+  text.split('\n').forEach(line=>{
+    const m = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if(m) present[m[1]] = m[2];
+  });
+  const notes = [];
+  required.forEach(key=>{
+    if(!(key in present)){
+      text += (text.endsWith('\n') || text==='' ? '' : '\n') + `${key}=CHANGE_ME\n`;
+      notes.push(`Added placeholder ${key}=CHANGE_ME — replace with the real secret/value before deploying.`);
+    } else if(present[key] === ''){
+      text = text.replace(new RegExp('^'+key+'\\s*=\\s*$','m'), `${key}=CHANGE_ME`);
+      notes.push(`Filled empty ${key} with a CHANGE_ME placeholder — replace with the real value.`);
+    }
+  });
+  return { text, notes };
+}
+
+function suggestFixSvc(){
+  let a, b;
+  try{ a = JSON.parse(val('in-svc-a') || '{}'); b = JSON.parse(val('in-svc-b') || '{}'); }
+  catch(e){ return { text: val('in-svc-b'), notes: ['Could not parse JSON — fix manually.'] }; }
+  const notes = [];
+  Object.keys(a).forEach(k=>{
+    if(k==='service') return;
+    if(k in b && JSON.stringify(a[k]) !== JSON.stringify(b[k])){
+      notes.push(`Synced "${k}" on ${b.service||'service B'} to match ${a.service||'service A'} (${JSON.stringify(a[k])}). Confirm this is the correct source of truth.`);
+      b[k] = a[k];
+    }
+  });
+  return { text: JSON.stringify(b, null, 2), notes };
+}
+
+const FIXERS = {
+  migration: { targets:['in-migration'], run: ()=>[suggestFixMigration()] },
+  api:       { targets:['in-api-new'],   run: ()=>[suggestFixApi()] },
+  deps:      { targets:['in-deps'],      run: ()=>[suggestFixDeps()] },
+  env:       { targets:['in-env'],       run: ()=>[suggestFixEnv()] },
+  svc:       { targets:['in-svc-b'],     run: ()=>[suggestFixSvc()] },
+};
+
+function applyFix(agentId){
+  const fixer = FIXERS[agentId];
+  const results = fixer.run();
+  fixer.targets.forEach((targetId, i)=>{
+    setVal(targetId, results[i].text);
+  });
+  const allNotes = results.flatMap(r=>r.notes);
+  logEvent(`Applied auto-remediation to <strong>${agentId}</strong>: ` + (allNotes.length ? allNotes.join(' ') : 'no automatic fix available, please edit manually.'));
+  runAll();
+}
+
+const AGENT_EVIDENCE = {
+  migration: ['in-migration'], api: ['in-api-old','in-api-new'], deps: ['in-deps'],
+  env: ['in-env','in-env-required'], svc: ['in-svc-a','in-svc-b']
+};
+const AGENT_FIX_PREVIEW = {
+  migration: ()=>suggestFixMigration(), api: ()=>suggestFixApi(), deps: ()=>suggestFixDeps(),
+  env: ()=>suggestFixEnv(), svc: ()=>suggestFixSvc()
+};
+
+async function runAll(){
+  document.getElementById('runBtn').disabled = true;
+  scanIteration += 1;
+  updateIterBadge();
+  const bar = document.getElementById('verdictBar');
+  bar.className = 'verdict-bar idle';
+  document.getElementById('verdictText').textContent = 'SCANNING…';
+  document.getElementById('verdictSub').textContent = 'All 5 subagents running in parallel.';
+  document.getElementById('reportList').innerHTML = '';
+  document.getElementById('reportEmpty').style.display = 'none';
+  document.getElementById('downloadBtn').disabled = true;
+  AGENTS.forEach(a=>setAgentState(a.id, null, 'Idle'));
+  setOrchestratorState(`Dispatching 5 subagents in parallel (scan #${scanIteration})…`);
+  logEvent(`Main Agent dispatched 5 subagents in parallel — scan #${scanIteration} started.`);
+
+  const labels = {
+    migration:'Database Migration Safety Checker',
+    api:'API Breaking-Change Detector',
+    deps:'Dependency Conflict Scanner',
+    env:'Environment Configuration Validator',
+    svc:'Cross-Service Contract Checker'
+  };
+
+  const results = await Promise.all([
+    runAgent('migration', 650, ()=>checkMigration(val('in-migration')), labels.migration),
+    runAgent('api', 900, ()=>checkApi(val('in-api-old'), val('in-api-new')), labels.api),
+    runAgent('deps', 500, ()=>checkDeps(val('in-deps')), labels.deps),
+    runAgent('env', 400, ()=>checkEnv(val('in-env'), val('in-env-required')), labels.env),
+    runAgent('svc', 750, ()=>checkServices(val('in-svc-a'), val('in-svc-b')), labels.svc),
+  ]);
+
+  setOrchestratorState('Aggregating subagent results…');
+
+  const list = document.getElementById('reportList');
+  let anyFail = false;
+  let reportText = 'DEPLOYMENT RISK REPORT — scan #' + scanIteration + '\n' + '='.repeat(40) + '\n\n';
+
+  results.forEach(r=>{
+    if(!r.pass) anyFail = true;
+    const evidence = AGENT_EVIDENCE[r.id].map(t=>evidenceLabel(t)).join(', ');
+    const div = document.createElement('div');
+    div.className = 'report-item ' + (r.pass ? 'pass' : 'fail');
+    let fixHtml = '';
+    if(!r.pass){
+      const preview = AGENT_FIX_PREVIEW[r.id]();
+      const noteText = preview.notes.length ? preview.notes.join(' ') : 'No automatic fix available for this — edit the input manually.';
+      fixHtml = `<div class="fix-box">
+          <div class="fix-label">Suggested remediation</div>
+          <div class="fix-text">${noteText}</div>
+        </div>
+        <button class="primary apply-fix-btn" type="button" data-agent="${r.id}">Apply suggested fix &amp; re-scan</button>`;
+    }
+    div.innerHTML = `<div class="head"><span>${labels[r.id]}</span><span class="tag">${r.pass ? 'PASS' : 'FAIL'}</span></div>
+      <div class="evidence-tag">Evidence: ${evidence}</div>
+      <div class="msg">${r.pass ? 'No issues detected.' : r.findings.map(f=>'• '+f).join('\n')}</div>
+      ${fixHtml}`;
+    list.appendChild(div);
+    reportText += `[${r.pass ? 'PASS' : 'FAIL'}] ${labels[r.id]}  (evidence: ${evidence})\n`;
+    if(!r.pass) r.findings.forEach(f=> reportText += `   - ${f}\n`);
+    reportText += '\n';
+  });
+
+  list.querySelectorAll('.apply-fix-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> applyFix(btn.getAttribute('data-agent')));
+  });
+
+  reportText += anyFail ? 'VERDICT: DEPLOYMENT BLOCKED until issues are fixed.\n' : 'VERDICT: CLEAR TO DEPLOY.\n';
+
+  bar.className = 'verdict-bar ' + (anyFail ? 'blocked' : 'clear');
+  document.getElementById('verdictText').textContent = anyFail ? 'DEPLOYMENT BLOCKED' : 'CLEAR TO DEPLOY';
+  document.getElementById('verdictSub').textContent = anyFail
+    ? 'One or more subagents found risks. Fix the flagged items and re-run.'
+    : 'All 5 subagents passed. No known risks detected in the provided inputs.';
+
+  setOrchestratorState(anyFail
+    ? `Blocked after scan #${scanIteration}. Waiting on remediation.`
+    : `All subagents passed on scan #${scanIteration}. Ready for approval.`);
+  logEvent(anyFail
+    ? `Main Agent verdict: <strong>DEPLOYMENT BLOCKED</strong> (scan #${scanIteration}).`
+    : `Main Agent verdict: <strong>CLEAR TO DEPLOY</strong> (scan #${scanIteration}).`);
+
+  const approvalPanel = document.getElementById('approvalPanel');
+  const approvalStatus = document.getElementById('approvalStatus');
+  const approveBtn = document.getElementById('approveBtn');
+  if(anyFail){
+    approvalPanel.classList.add('locked');
+    approvalStatus.textContent = 'Not ready — issues outstanding';
+    approvalStatus.classList.remove('ready');
+    approveBtn.disabled = true;
+  } else {
+    approvalPanel.classList.remove('locked');
+    approvalStatus.textContent = 'Ready for approval — all subagents passed';
+    approvalStatus.classList.add('ready');
+    approveBtn.disabled = false;
+  }
+
+  window.__lastReport = reportText;
+  document.getElementById('downloadBtn').disabled = false;
+  document.getElementById('runBtn').disabled = false;
+}
+
+document.getElementById('runBtn').addEventListener('click', runAll);
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  ['in-migration','in-api-old','in-api-new','in-deps','in-env','in-env-required','in-svc-a','in-svc-b'].forEach(id=>setVal(id,''));
+  AGENTS.forEach(a=>setAgentState(a.id, null, 'Idle'));
+  document.getElementById('reportList').innerHTML = '';
+  document.getElementById('reportEmpty').style.display = 'block';
+  const bar = document.getElementById('verdictBar');
+  bar.className = 'verdict-bar idle';
+  document.getElementById('verdictText').textContent = 'NOT YET SCANNED';
+  document.getElementById('verdictSub').textContent = 'Fill in the panels below (or load the demo) and press "Run all checks".';
+  document.getElementById('downloadBtn').disabled = true;
+
+  // v2 reset: evidence tags, orchestration log, iteration counter, approval state
+  FILE_TARGETS.forEach(id=>{
+    delete evidenceSource[id];
+    const tag = document.getElementById('evidence-'+id);
+    if(tag){ tag.textContent = 'Source: pasted text'; tag.classList.remove('has-file'); }
+  });
+  orchestrationLog.length = 0;
+  document.getElementById('orchestrationLog').innerHTML = '<div class="log-empty">No activity yet. Run a scan to populate this log.</div>';
+  scanIteration = 0;
+  updateIterBadge();
+  setOrchestratorState('Idle. Waiting to dispatch subagents.');
+  approvalRecord = null;
+  const approvalPanel = document.getElementById('approvalPanel');
+  approvalPanel.classList.add('locked');
+  const approvalStatus = document.getElementById('approvalStatus');
+  approvalStatus.textContent = 'Not ready — issues outstanding';
+  approvalStatus.classList.remove('ready');
+  document.getElementById('approveBtn').disabled = true;
+  document.getElementById('certBtn').disabled = true;
+  document.getElementById('approverName').value = '';
+});
+
+document.getElementById('downloadBtn').addEventListener('click', ()=>{
+  if(!window.__lastReport) return;
+  const blob = new Blob([window.__lastReport], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'deployment-risk-report.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+// ---------- v2: approval workflow ----------
+
+let approvalRecord = null;
+
+document.getElementById('approveBtn').addEventListener('click', ()=>{
+  const approver = document.getElementById('approverName').value.trim() || 'Unspecified approver';
+  approvalRecord = {
+    approver, time: new Date().toLocaleString(), iteration: scanIteration
+  };
+  logEvent(`✅ APPROVED by ${approver} — release-readiness evidence complete after ${scanIteration} scan(s).`);
+  setOrchestratorState(`Approved by ${approver} (scan #${scanIteration}). Release-ready.`);
+  document.getElementById('certBtn').disabled = false;
+  document.getElementById('approveBtn').disabled = true;
+  document.getElementById('approvalStatus').textContent = 'Approved — ' + approver;
+});
+
+document.getElementById('certBtn').addEventListener('click', ()=>{
+  if(!approvalRecord) return;
+  let cert = 'DEPLOYMENT APPROVAL CERTIFICATE\n' + '='.repeat(40) + '\n\n';
+  cert += `Approver: ${approvalRecord.approver}\n`;
+  cert += `Approved at: ${approvalRecord.time}\n`;
+  cert += `Scan iterations to reach approval: ${approvalRecord.iteration}\n\n`;
+  cert += 'Orchestration log (evidence trail):\n' + '-'.repeat(40) + '\n';
+  orchestrationLog.forEach(e=>{ cert += `[${e.time}] ${e.msg.replace(/<\/?strong>/g,'')}\n`; });
+  cert += '\n' + (window.__lastReport || '');
+  const blob = new Blob([cert], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'deployment-approval-certificate.txt';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('loadDemoBtn').addEventListener('click', ()=>{
+  setVal('in-migration', `-- 004_update_users.sql
+ALTER TABLE users ADD COLUMN last_login TIMESTAMP;
+ALTER TABLE users DROP COLUMN user_email;
+`);
+  setVal('in-api-old', JSON.stringify({
+    "/login": {"method":"POST","request":["username","password"],"response":["token"]}
+  }, null, 2));
+  setVal('in-api-new', JSON.stringify({
+    "/login": {"method":"POST","request":["username","password"],"response":["session_id"]}
+  }, null, 2));
+  setVal('in-deps', `bcrypt==3.0.0
+auth-lib==2.1.0
+flask==2.3.0`);
+  setVal('in-env', `DB_URL=postgres://prod-db:5432/app
+REDIS_URL=redis://cache:6379`);
+  setVal('in-env-required', 'DB_URL, JWT_SECRET, REDIS_URL');
+  setVal('in-svc-a', JSON.stringify({"service":"payment-service","currency":"INR","apiVersion":"v2"}, null, 2));
+  setVal('in-svc-b', JSON.stringify({"service":"order-service","currency":"USD","apiVersion":"v2"}, null, 2));
+});
+</script>
+</body>
+</html>
